@@ -32,7 +32,6 @@ protected:
   /// Computes the 20x1 soln vector and its derivatives for each shell element
   virtual void computeSolnVector();
 
-   virtual void computeCompatibleCoordinate();
   /// Computes the B matrix that connects strains to nodal displacements and rotations
   virtual void computeBMatrix();
 
