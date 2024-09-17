@@ -46,15 +46,15 @@ ADComputeOrthotropicElasticityTensorShell::validParams()
 ADComputeOrthotropicElasticityTensorShell::ADComputeOrthotropicElasticityTensorShell(
     const InputParameters & parameters)
   : Material(parameters),
-    _prefactor_function(isParamValid("elasticity_tensor_prefactor")
-                            ? &getFunction("elasticity_tensor_prefactor")
-                            : nullptr),
     _poissons_ratio_12(getParam<Real>("poissons_ratio_12")),
-    _youngs_modulus_1(getParam<Real>("youngs_modulus_1")),
-    _youngs_modulus_2(getParam<Real>("youngs_modulus_2")),
     _shear_modulus_12(getParam<Real>("shear_modulus_12")),
     _shear_modulus_13(getParam<Real>("shear_modulus_13")),
-    _shear_modulus_23(getParam<Real>("shear_modulus_23"))
+    _shear_modulus_23(getParam<Real>("shear_modulus_23")),
+    _youngs_modulus_1(getParam<Real>("youngs_modulus_1")),
+    _youngs_modulus_2(getParam<Real>("youngs_modulus_2")),
+    _prefactor_function(isParamValid("elasticity_tensor_prefactor")
+                            ? &getFunction("elasticity_tensor_prefactor")
+                            : nullptr)
 {
   _Cijkl.fillSymmetricIsotropicEandNu(_youngs_modulus_1, _poissons_ratio_12);
 
