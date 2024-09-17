@@ -497,18 +497,13 @@ ADComputeIncrementalTriangularShellStrain::computeGMatrix()
         e1 = getParam<RealVectorValue>("user_defined_first_local_vector");
         e1 /= e1.norm();
         if (std::abs(e1 * e3) > 0.999)
-        {
           mooseError("The defined 1st local axis is perpenticular to one of the shell elements ");
-        }
         else
-        {
           e1 = (e1 - (e1 * e3) * e3);
-        }
       }
       else
       {
         e1 = _x2.cross(e3);
-
         if (MooseUtils::absoluteFuzzyEqual(e1.norm(), 0.0, 1e-6))
           e1 = _x3;
       }
@@ -569,12 +564,12 @@ ADComputeIncrementalTriangularShellStrain::computeBMatrix()
   for (unsigned int k = 0; k < _nodes.size(); ++k)
   {
     _v1[k] = _x2.cross(_node_normal[k]);
-    _v1[k] /= _v1[k].norm();
 
     // If x2 is parallel to node normal, set V1 to x3
     if (MooseUtils::absoluteFuzzyEqual(_v1[k].norm(), 0.0, 1e-6))
       _v1[k] = _x3;
 
+    _v1[k] /= _v1[k].norm();
     _v2[k] = _node_normal[k].cross(_v1[k]);
   }
   // compute B matrix rows correspond to [ux1, ux2, ux3, ux4, uy1, uy2, uy3, uy4, uz1, uz2, uz3,
