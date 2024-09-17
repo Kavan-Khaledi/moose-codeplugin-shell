@@ -32,17 +32,18 @@ ADComputeIsotropicElasticityTensorTriangularShell::validParams()
       "youngs_modulus", "youngs_modulus > 0.0", "Young's modulus of the material.");
   params.addRequiredParam<std::string>("through_thickness_order",
                                        "Quadrature order in out of plane direction");
-    params.addParam<FunctionName>(
+  params.addParam<FunctionName>(
       "elasticity_tensor_prefactor",
       "Optional function to use as a scalar prefactor on the elasticity vector for the shell.");
   return params;
 }
 
-ADComputeIsotropicElasticityTensorTriangularShell::ADComputeIsotropicElasticityTensorTriangularShell(
-    const InputParameters & parameters)
+ADComputeIsotropicElasticityTensorTriangularShell::
+    ADComputeIsotropicElasticityTensorTriangularShell(const InputParameters & parameters)
   : Material(parameters),
-   _prefactor_function(isParamValid("elasticity_tensor_prefactor") ? &getFunction("elasticity_tensor_prefactor")
-                                                             : nullptr),
+    _prefactor_function(isParamValid("elasticity_tensor_prefactor")
+                            ? &getFunction("elasticity_tensor_prefactor")
+                            : nullptr),
     _poissons_ratio(getParam<Real>("poissons_ratio")),
     _youngs_modulus(getParam<Real>("youngs_modulus"))
 {
@@ -92,9 +93,9 @@ ADComputeIsotropicElasticityTensorTriangularShell::computeQpProperties()
                         (*_ge[t])[_qp](i, m) * (*_ge[t])[_qp](j, n) * (*_ge[t])[_qp](k, o) *
                         (*_ge[t])[_qp](l, p) * _Cijkl(m, n, o, p);
 
-  if (_prefactor_function)
-   {
-   (*_elasticity_tensor[t])[_qp]*=_prefactor_function->value(_t, _q_point[_qp]);
-   }
+    if (_prefactor_function)
+    {
+      (*_elasticity_tensor[t])[_qp] *= _prefactor_function->value(_t, _q_point[_qp]);
+    }
   }
 }
