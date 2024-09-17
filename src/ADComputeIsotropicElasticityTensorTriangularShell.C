@@ -41,11 +41,11 @@ ADComputeIsotropicElasticityTensorTriangularShell::validParams()
 ADComputeIsotropicElasticityTensorTriangularShell::
     ADComputeIsotropicElasticityTensorTriangularShell(const InputParameters & parameters)
   : Material(parameters),
+    _poissons_ratio(getParam<Real>("poissons_ratio")),
+    _youngs_modulus(getParam<Real>("youngs_modulus")),
     _prefactor_function(isParamValid("elasticity_tensor_prefactor")
                             ? &getFunction("elasticity_tensor_prefactor")
-                            : nullptr),
-    _poissons_ratio(getParam<Real>("poissons_ratio")),
-    _youngs_modulus(getParam<Real>("youngs_modulus"))
+                            : nullptr)
 {
   _Cijkl.fillSymmetricIsotropicEandNu(_youngs_modulus, _poissons_ratio);
 
