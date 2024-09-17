@@ -14,8 +14,8 @@
 class Function;
 
 /**
- * ShellDistributedLoad computes the body force (force/volume) given the acceleration of ShellDistributedLoad (value) and the
- * density
+ * ShellDistributedLoad computes the body force (force/volume) given the acceleration of
+ * ShellDistributedLoad (value) and the density
  */
 template <bool is_ad>
 class ShellDistributedLoadTempl : public GenericKernel<is_ad>
@@ -32,7 +32,6 @@ protected:
   const Function & _function;
 
   // _alpha parameter for HHT time integration scheme
-
 
   usingTransientInterfaceMembers;
   using GenericKernel<is_ad>::_i;

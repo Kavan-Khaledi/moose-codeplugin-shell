@@ -39,15 +39,15 @@ protected:
   virtual void computeNodeNormal();
 
   /// Updates the vectors required for shear locking computation for finite rotations
-  virtual void updateGVectors(){};
+  virtual void updateGVectors() {};
 
   /// Updates covariant vectors at each qp for finite rotations
-  virtual void updatedxyz(){};
+  virtual void updatedxyz() {};
 
   /// Computes the transformation matrix from natural coordinates to local cartesian coordinates for elasticity tensor transformation
   virtual void computeGMatrix();
 
-   const bool _has_y_vector;
+  const bool _has_y_vector;
   /// Number of coupled rotational variables
   unsigned int _nrot;
 
@@ -62,8 +62,6 @@ protected:
 
   /// Coupled variable for the shell thickness
   const VariableValue & _thickness;
-
- 
 
   /// Flag to compute large strains
   const bool _large_strain;
@@ -112,7 +110,7 @@ protected:
 
   /// Derivatives of shape functions w.r.t isoparametric coordinates xi
   std::vector<std::vector<Real>> _dphidxi_map;
-  
+
   std::vector<std::vector<Real>> _dphidzeta_map;
 
   /// Derivatives of shape functions w.r.t isoparametric coordinates eta
@@ -162,8 +160,8 @@ protected:
 
   /// Old material property containing jacobian of transformation
   std::vector<const MaterialProperty<Real> *> _J_map_old;
-   std::vector<MaterialProperty<RankTwoTensor> *> _element_transformation_matrix;
-   std::vector<const MaterialProperty<RankTwoTensor> *> _element_transformation_matrix_old;
+  std::vector<MaterialProperty<RankTwoTensor> *> _element_transformation_matrix;
+  std::vector<const MaterialProperty<RankTwoTensor> *> _element_transformation_matrix_old;
   /// Covariant base vector matrix material property to transform stress
   std::vector<MaterialProperty<RankTwoTensor> *> _covariant_transformation_matrix;
   std::vector<const MaterialProperty<RankTwoTensor> *> _covariant_transformation_matrix_old;
@@ -177,15 +175,15 @@ protected:
 
   /// Rotation matrix material property
   MaterialProperty<RankTwoTensor> * _transformation_matrix;
-  MaterialProperty<Real> *_first_local_axis_x;
-  MaterialProperty<Real> *_first_local_axis_y;
-  MaterialProperty<Real> *_first_local_axis_z;
-  MaterialProperty<Real> *_second_local_axis_x;
-  MaterialProperty<Real> *_second_local_axis_y;
-  MaterialProperty<Real> *_second_local_axis_z;
-  MaterialProperty<Real> *_normal_local_axis_x;
-  MaterialProperty<Real> *_normal_local_axis_y;
-  MaterialProperty<Real> *_normal_local_axis_z;
+  MaterialProperty<Real> * _first_local_axis_x;
+  MaterialProperty<Real> * _first_local_axis_y;
+  MaterialProperty<Real> * _first_local_axis_z;
+  MaterialProperty<Real> * _second_local_axis_x;
+  MaterialProperty<Real> * _second_local_axis_y;
+  MaterialProperty<Real> * _second_local_axis_z;
+  MaterialProperty<Real> * _normal_local_axis_x;
+  MaterialProperty<Real> * _normal_local_axis_y;
+  MaterialProperty<Real> * _normal_local_axis_z;
   /// simulation variables
   ADRealVectorValue _x2;
   ADRealVectorValue _x3;

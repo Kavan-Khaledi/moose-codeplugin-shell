@@ -1,0 +1,39 @@
+[Tests]
+  issues = '#1'
+  [clamped_plate_flat]
+    type = 'Exodiff'
+    input = 'clamped_plate_flat.i'
+    exodiff = 'clamped_plate_flat_out.e'
+    requirement = 'Test for simply supported plate under uniform pressure'
+  []
+  [comsol_roof_example]
+    type = 'Exodiff'
+    input = 'comsol_roof_example.i'
+    exodiff = 'comsol_roof_example_out.e'
+    requirement = 'Comsol roof example based on the existing analytical Solutions, maximum deflection of the roof is 0.3086.'
+  []
+  [Flac3d_Isotropic_Plate]
+    type = 'Exodiff'
+    input = 'Flac3d_Isotropic_Plate.i'
+    exodiff = 'Flac3d_Isotropic_Plate_out.e'
+    requirement = 'Test of a isotropic plate with known solution from Flac3D.'
+  []
+  [Flac3d_Plate_Concentrated_Loads]
+    type = 'Exodiff'
+    input = 'Flac3d_Plate_Concentrated_Loads.i'
+    exodiff = 'Flac3d_Plate_Concentrated_Loads_out.e'
+    requirement = 'Plate with concentrated load with known solution from Flac3D.'
+  []
+  [pinched_cylinder_symm]
+    type = 'Exodiff'
+    input = 'pinched_cylinder_symm.i'
+    exodiff = 'pinched_cylinder_symm_out.e'
+    requirement = 'Test for displacement of pinched cylinder.'
+  []
+  [Plate_Cantilever]
+    type = 'Exodiff'
+    input = 'Plate_Cantilever.i'
+    exodiff = 'Plate_Cantilever_out.e'
+    requirement = 'Constant bending of 0.05 applied to the tip of a Plate_Cantilever.'
+  []
+[]

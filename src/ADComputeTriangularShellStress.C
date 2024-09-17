@@ -39,7 +39,7 @@ ADComputeTriangularShellStress::validParams()
 ADComputeTriangularShellStress::ADComputeTriangularShellStress(const InputParameters & parameters)
   : Material(parameters),
 
-_thickness(coupledValue("thickness"))
+    _thickness(coupledValue("thickness"))
 {
   // get number of quadrature points along thickness based on order
   std::unique_ptr<QGauss> t_qrule = std::make_unique<QGauss>(
@@ -66,24 +66,22 @@ _thickness(coupledValue("thickness"))
     // rotation matrix and stress for output purposes only
     _covariant_transformation_matrix[t] = &getMaterialProperty<RankTwoTensor>(
         "covariant_transformation_t_points_" + std::to_string(t));
-    _element_transformation_matrix[t] = &getMaterialProperty<RankTwoTensor>(
-        "element_transformation_t_points_" + std::to_string(t));
+    _element_transformation_matrix[t] =
+        &getMaterialProperty<RankTwoTensor>("element_transformation_t_points_" + std::to_string(t));
     _global_stress[t] =
         &declareProperty<RankTwoTensor>("global_stress_t_points_" + std::to_string(t));
-     _local_shell_stress[t] =
+    _local_shell_stress[t] =
         &declareProperty<RankTwoTensor>("local_stress_t_points_" + std::to_string(t));
   }
-  _local_moment_x= &declareADProperty<Real>("local_moment_x");
-  _shell_force_1= &declareADProperty<Real>("shell_force_1");
-  _shell_force_2= &declareADProperty<Real>("shell_force_2");
-  _shell_shear_12= &declareADProperty<Real>("shell_shear_12");
-  _shell_shear_13= &declareADProperty<Real>("shell_shear_13");
-  _shell_shear_23= &declareADProperty<Real>("shell_shear_23");
-  _shell_moment_11= &declareADProperty<Real>("shell_moment_11");
-  _shell_moment_22= &declareADProperty<Real>("shell_moment_22");
-  _shell_moment_12= &declareADProperty<Real>("shell_moment_12");
-
-
+  _local_moment_x = &declareADProperty<Real>("local_moment_x");
+  _shell_force_1 = &declareADProperty<Real>("shell_force_1");
+  _shell_force_2 = &declareADProperty<Real>("shell_force_2");
+  _shell_shear_12 = &declareADProperty<Real>("shell_shear_12");
+  _shell_shear_13 = &declareADProperty<Real>("shell_shear_13");
+  _shell_shear_23 = &declareADProperty<Real>("shell_shear_23");
+  _shell_moment_11 = &declareADProperty<Real>("shell_moment_11");
+  _shell_moment_22 = &declareADProperty<Real>("shell_moment_22");
+  _shell_moment_12 = &declareADProperty<Real>("shell_moment_12");
 }
 
 void
@@ -93,17 +91,15 @@ ADComputeTriangularShellStress::initQpStatefulProperties()
   for (unsigned int i = 0; i < _t_points.size(); ++i)
     (*_stress[i])[_qp].zero();
 
-  (*_local_moment_x)[_qp]=0.0;
-  (*_shell_force_1)[_qp]=0.0;
-  (*_shell_force_2)[_qp]=0.0;
-  (*_shell_shear_12)[_qp]=0.0;
-  (*_shell_shear_13)[_qp]=0.0;
-  (*_shell_shear_23)[_qp]=0.0;
-  (*_shell_moment_11)[_qp]=0.0;
-  (*_shell_moment_22)[_qp]=0.0;
-  (*_shell_moment_12)[_qp]=0.0;
-
-
+  (*_local_moment_x)[_qp] = 0.0;
+  (*_shell_force_1)[_qp] = 0.0;
+  (*_shell_force_2)[_qp] = 0.0;
+  (*_shell_shear_12)[_qp] = 0.0;
+  (*_shell_shear_13)[_qp] = 0.0;
+  (*_shell_shear_23)[_qp] = 0.0;
+  (*_shell_moment_11)[_qp] = 0.0;
+  (*_shell_moment_22)[_qp] = 0.0;
+  (*_shell_moment_12)[_qp] = 0.0;
 }
 
 void
@@ -119,33 +115,34 @@ ADComputeTriangularShellStress::computeQpProperties()
         _unrotated_stress(ii, jj) = MetaPhysicL::raw_value((*_stress[i])[_qp](ii, jj));
     (*_global_stress[i])[_qp] = (*_covariant_transformation_matrix[i])[_qp].transpose() *
                                 _unrotated_stress * (*_covariant_transformation_matrix[i])[_qp];
-    (*_local_shell_stress[i])[_qp] = (*_element_transformation_matrix[i])[_qp]*(*_global_stress[i])[_qp]*
-                                 (*_element_transformation_matrix[i])[_qp].transpose();
-   
+    (*_local_shell_stress[i])[_qp] = (*_element_transformation_matrix[i])[_qp] *
+                                     (*_global_stress[i])[_qp] *
+                                     (*_element_transformation_matrix[i])[_qp].transpose();
   }
 
+  Real p11 = MetaPhysicL::raw_value((*_local_shell_stress[0])[_qp](0, 0));
+  Real s11 = MetaPhysicL::raw_value((*_local_shell_stress[1])[_qp](0, 0));
+  Real p22 = MetaPhysicL::raw_value((*_local_shell_stress[0])[_qp](1, 1));
+  Real s22 = MetaPhysicL::raw_value((*_local_shell_stress[1])[_qp](1, 1));
+  Real p12 = MetaPhysicL::raw_value((*_local_shell_stress[0])[_qp](0, 1));
+  Real s12 = MetaPhysicL::raw_value((*_local_shell_stress[1])[_qp](0, 1));
+  Real p13 = MetaPhysicL::raw_value((*_local_shell_stress[0])[_qp](0, 2));
+  Real s13 = MetaPhysicL::raw_value((*_local_shell_stress[1])[_qp](0, 2));
+  Real p23 = MetaPhysicL::raw_value((*_local_shell_stress[0])[_qp](1, 2));
+  Real s23 = MetaPhysicL::raw_value((*_local_shell_stress[1])[_qp](1, 2));
+  //(*_local_moment_x)[_qp]= std::pow(std::pow((p1+p2)*0.21/2,2),0.5);
 
-Real p11=MetaPhysicL::raw_value((*_local_shell_stress[0])[_qp](0, 0));
-Real s11=MetaPhysicL::raw_value((*_local_shell_stress[1])[_qp](0, 0));
-Real p22=MetaPhysicL::raw_value((*_local_shell_stress[0])[_qp](1, 1));
-Real s22=MetaPhysicL::raw_value((*_local_shell_stress[1])[_qp](1, 1));
-Real p12=MetaPhysicL::raw_value((*_local_shell_stress[0])[_qp](0, 1));
-Real s12=MetaPhysicL::raw_value((*_local_shell_stress[1])[_qp](0, 1));
-Real p13=MetaPhysicL::raw_value((*_local_shell_stress[0])[_qp](0, 2));
-Real s13=MetaPhysicL::raw_value((*_local_shell_stress[1])[_qp](0, 2));
-Real p23=MetaPhysicL::raw_value((*_local_shell_stress[0])[_qp](1, 2));
-Real s23=MetaPhysicL::raw_value((*_local_shell_stress[1])[_qp](1, 2));
-//(*_local_moment_x)[_qp]= std::pow(std::pow((p1+p2)*0.21/2,2),0.5); 
+  //(*_local_moment_x)[_qp]= (p1*-0.57735+p2*0.57735)*0.21*0.21/4;
 
-
-//(*_local_moment_x)[_qp]= (p1*-0.57735+p2*0.57735)*0.21*0.21/4;
-  
-  (*_shell_force_1)[_qp]=(p11+s11)*(_thickness[_qp]/2);
-  (*_shell_force_2)[_qp]=(p22+s22)*(_thickness[_qp]/2);
-  (*_shell_shear_12)[_qp]=(p12+s12)*(_thickness[_qp]/2);
-  (*_shell_shear_13)[_qp]=(p13+s13)*(_thickness[_qp]/2);
-  (*_shell_shear_23)[_qp]=(p23+s23)*(_thickness[_qp]/2);
-  (*_shell_moment_11)[_qp]=-(p11*-0.57735+s11*0.57735)*(_thickness[_qp]/2)*(_thickness[_qp]/2);
-  (*_shell_moment_22)[_qp]=-(p22*-0.57735+s22*0.57735)*(_thickness[_qp]/2)*(_thickness[_qp]/2);
-  (*_shell_moment_12)[_qp]=-(p12*-0.57735+s12*0.57735)*(_thickness[_qp]/2)*(_thickness[_qp]/2);
+  (*_shell_force_1)[_qp] = (p11 + s11) * (_thickness[_qp] / 2);
+  (*_shell_force_2)[_qp] = (p22 + s22) * (_thickness[_qp] / 2);
+  (*_shell_shear_12)[_qp] = (p12 + s12) * (_thickness[_qp] / 2);
+  (*_shell_shear_13)[_qp] = (p13 + s13) * (_thickness[_qp] / 2);
+  (*_shell_shear_23)[_qp] = (p23 + s23) * (_thickness[_qp] / 2);
+  (*_shell_moment_11)[_qp] =
+      -(p11 * -0.57735 + s11 * 0.57735) * (_thickness[_qp] / 2) * (_thickness[_qp] / 2);
+  (*_shell_moment_22)[_qp] =
+      -(p22 * -0.57735 + s22 * 0.57735) * (_thickness[_qp] / 2) * (_thickness[_qp] / 2);
+  (*_shell_moment_12)[_qp] =
+      -(p12 * -0.57735 + s12 * 0.57735) * (_thickness[_qp] / 2) * (_thickness[_qp] / 2);
 }

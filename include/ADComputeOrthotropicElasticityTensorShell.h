@@ -36,8 +36,6 @@ protected:
   Real _youngs_modulus_1;
   Real _youngs_modulus_2;
 
-
-
   /// Individual elasticity tensor
   RankFourTensor _Cijkl;
 
@@ -47,7 +45,7 @@ protected:
   /// Material property elasticity tensor
   std::vector<ADMaterialProperty<RankFourTensor> *> _elasticity_tensor;
 
-    /// Prefactor function used to modify (i.e., multiply) the material stiffness
+  /// Prefactor function used to modify (i.e., multiply) the material stiffness
   const Function * const _prefactor_function;
 
   /// Material property for ge matrix

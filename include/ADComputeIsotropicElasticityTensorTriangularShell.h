@@ -45,7 +45,6 @@ protected:
   /// Material property for ge matrix
   std::vector<const ADMaterialProperty<RankTwoTensor> *> _ge;
 
-  
-    /// Prefactor function used to modify (i.e., multiply) the material stiffness
+  /// Prefactor function used to modify (i.e., multiply) the material stiffness
   const Function * const _prefactor_function;
 };

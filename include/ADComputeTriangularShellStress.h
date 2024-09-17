@@ -58,17 +58,16 @@ protected:
 
   std::vector<MaterialProperty<RankTwoTensor> *> _local_shell_stress;
 
-    /// moment tensor material property
-  ADMaterialProperty<Real> *_local_moment_x;
-  ADMaterialProperty<Real> *_shell_force_1;
-  ADMaterialProperty<Real> *_shell_force_2;
-  ADMaterialProperty<Real> *_shell_moment_11;
-  ADMaterialProperty<Real> *_shell_moment_22;
-  ADMaterialProperty<Real> *_shell_moment_12;
-  ADMaterialProperty<Real> *_shell_shear_12;
-  ADMaterialProperty<Real> *_shell_shear_13;
-  ADMaterialProperty<Real> *_shell_shear_23;
-  
+  /// moment tensor material property
+  ADMaterialProperty<Real> * _local_moment_x;
+  ADMaterialProperty<Real> * _shell_force_1;
+  ADMaterialProperty<Real> * _shell_force_2;
+  ADMaterialProperty<Real> * _shell_moment_11;
+  ADMaterialProperty<Real> * _shell_moment_22;
+  ADMaterialProperty<Real> * _shell_moment_12;
+  ADMaterialProperty<Real> * _shell_shear_12;
+  ADMaterialProperty<Real> * _shell_shear_13;
+  ADMaterialProperty<Real> * _shell_shear_23;
 
   /// Real value of stress in the local coordinate system
   RankTwoTensor _unrotated_stress;

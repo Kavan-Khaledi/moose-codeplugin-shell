@@ -43,7 +43,8 @@ ADStressDivergenceTriangularShell::validParams()
   return params;
 }
 
-ADStressDivergenceTriangularShell::ADStressDivergenceTriangularShell(const InputParameters & parameters)
+ADStressDivergenceTriangularShell::ADStressDivergenceTriangularShell(
+    const InputParameters & parameters)
   : ADKernel(parameters),
     _component(getParam<unsigned int>("component")),
     _large_strain(getParam<bool>("large_strain"))
@@ -83,7 +84,7 @@ ADStressDivergenceTriangularShell::computeQpResidual()
   {
     residual1 = (*_stress[_qp_z])[_qp](0, 0) * (*_B_mat[_qp_z])[_qp](0, _i + _component * 6) +
                 (*_stress[_qp_z])[_qp](1, 1) * (*_B_mat[_qp_z])[_qp](1, _i + _component * 6) +
-                2.0 * (*_stress[_qp_z])[_qp](0, 1) * (*_B_mat[_qp_z])[_qp](2, _i + _component * 6)+
+                2.0 * (*_stress[_qp_z])[_qp](0, 1) * (*_B_mat[_qp_z])[_qp](2, _i + _component * 6) +
                 2.0 * (*_stress[_qp_z])[_qp](0, 2) * (*_B_mat[_qp_z])[_qp](3, _i + _component * 6) +
                 2.0 * (*_stress[_qp_z])[_qp](1, 2) * (*_B_mat[_qp_z])[_qp](4, _i + _component * 6);
 
