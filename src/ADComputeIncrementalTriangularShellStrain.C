@@ -296,7 +296,7 @@ ADComputeIncrementalTriangularShellStrain::computeProperties()
     {
       e1 = getParam<RealVectorValue>("user_defined_first_local_vector");
       e1 /= e1.norm();
-      if (std::abs(e1 * e3) > 0.999)
+      if (std::abs(MetaPhysicL::raw_value(e1 * e3)) > 0.999)
       {
         mooseError("The defined 1st local axis is perpenticular to one of the shell elements ");
       }
@@ -463,7 +463,8 @@ ADComputeIncrementalTriangularShellStrain::computeGMatrix()
       gmn(2, 1) = gmn(1, 2);
 
       ADRankTwoTensor gmninv_temp = gmn.inverse();
-      (*_J_map[j])[i] = std::sqrt(gmn.det());
+      using std::sqrt;
+      (*_J_map[j])[i] = sqrt(gmn.det());
       (*_covariant_transformation_matrix[j])[i] = J;
 
       (*_contravariant_transformation_matrix[j])[i] =
@@ -496,7 +497,7 @@ ADComputeIncrementalTriangularShellStrain::computeGMatrix()
       {
         e1 = getParam<RealVectorValue>("user_defined_first_local_vector");
         e1 /= e1.norm();
-        if (std::abs(e1 * e3) > 0.999)
+        if (std::abs(MetaPhysicL::raw_value(e1 * e3)) > 0.999)
           mooseError("The defined 1st local axis is perpenticular to one of the shell elements ");
         else
           e1 = (e1 - (e1 * e3) * e3);
@@ -571,6 +572,7 @@ ADComputeIncrementalTriangularShellStrain::computeBMatrix()
 
     _v1[k] /= _v1[k].norm();
     _v2[k] = _node_normal[k].cross(_v1[k]);
+    _v2[k] /= _v2[k].norm();
   }
   // compute B matrix rows correspond to [ux1, ux2, ux3, ux4, uy1, uy2, uy3, uy4, uz1, uz2, uz3,
   // uz4, a1, a2, a3, a4, b1, b2, b3, b4]
