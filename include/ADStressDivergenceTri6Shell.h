@@ -20,15 +20,15 @@ class QGauss;
 }
 
 /**
- * ADStressDivergenceTriangularShell computes the stress divergence term for shell elements.
+ * ADStressDivergenceTri6Shell computes the stress divergence term for shell elements.
  **/
 
-class ADStressDivergenceTriangularShell : public ADKernel
+class ADStressDivergenceTri6Shell : public ADKernel
 {
 public:
   static InputParameters validParams();
 
-  ADStressDivergenceTriangularShell(const InputParameters & parameters);
+  ADStressDivergenceTri6Shell(const InputParameters & parameters);
 
 protected:
   virtual ADReal computeQpResidual() override;

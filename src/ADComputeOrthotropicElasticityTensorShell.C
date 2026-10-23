@@ -17,6 +17,7 @@
 #include "libmesh/quadrature_gauss.h"
 #include "Function.h"
 
+
 registerMooseObject(MOOSEAPPNAME, ADComputeOrthotropicElasticityTensorShell);
 
 InputParameters

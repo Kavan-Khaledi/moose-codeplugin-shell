@@ -5,7 +5,7 @@
 /*             See LICENSE for full restrictions                */
 /****************************************************************/
 
-#include "ADStressDivergenceTriangularShell.h"
+#include "ADStressDivergenceTri6Shell.h"
 
 // MOOSE includes
 #include "Assembly.h"
@@ -22,10 +22,11 @@
 #include "libmesh/enum_quadrature_type.h"
 #include "libmesh/string_to_enum.h"
 
-registerMooseObject(MOOSEAPPNAME, ADStressDivergenceTriangularShell);
+
+registerMooseObject(MOOSEAPPNAME, ADStressDivergenceTri6Shell);
 
 InputParameters
-ADStressDivergenceTriangularShell::validParams()
+ADStressDivergenceTri6Shell::validParams()
 {
   InputParameters params = ADKernel::validParams();
   params.addClassDescription("Quasi-static stress divergence kernel for Shell element");
@@ -43,7 +44,7 @@ ADStressDivergenceTriangularShell::validParams()
   return params;
 }
 
-ADStressDivergenceTriangularShell::ADStressDivergenceTriangularShell(
+ADStressDivergenceTri6Shell::ADStressDivergenceTri6Shell(
     const InputParameters & parameters)
   : ADKernel(parameters),
     _component(getParam<unsigned int>("component")),
@@ -74,7 +75,7 @@ ADStressDivergenceTriangularShell::ADStressDivergenceTriangularShell(
 }
 
 ADReal
-ADStressDivergenceTriangularShell::computeQpResidual()
+ADStressDivergenceTri6Shell::computeQpResidual()
 {
   _q_weights = _qrule->get_weights();
   ADReal residual = 0.0;

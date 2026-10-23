@@ -1,39 +1,44 @@
 [Tests]
-  issues = '#1'
-  [clamped_plate_flat]
+  design = ''
+  issues = ''
+  [clamped_plate_flat_tri6]
     type = 'Exodiff'
-    input = 'clamped_plate_flat.i'
-    exodiff = 'clamped_plate_flat_out.e'
-    requirement = 'Test for simply supported plate under uniform pressure'
+    input = 'clamped_plate_flat_tri6.i'
+    exodiff = 'clamped_plate_flat_tri6_out.e'
+    requirement = 'Flat plate with clamped boundary conditions using Tri6 elements. This test is used to verify the implementation of the shell element formulation and its ability to accurately model clamped boundary conditions.'
   []
-  [comsol_roof_example]
+
+  [Scordelis_Lo_roof_shell]
     type = 'Exodiff'
-    input = 'comsol_roof_example.i'
-    exodiff = 'comsol_roof_example_out.e'
-    requirement = 'Comsol roof example based on the existing analytical Solutions, maximum deflection of the roof is 0.3086.'
+    input = 'Scordelis_Lo_roof_shell.i'
+    exodiff = 'Scordelis_Lo_roof_shell_out.e'
+    requirement = 'Curved roof plate with clamped boundary conditions using Tri6 elements under self-weight loading. This test is used to verify the implementation of the shell element formulation and its ability to accurately model curved geometries and clamped boundary conditions.'
   []
-  [Flac3d_Isotropic_Plate]
+
+  [kirchhoff_love_plate]
     type = 'Exodiff'
-    input = 'Flac3d_Isotropic_Plate.i'
-    exodiff = 'Flac3d_Isotropic_Plate_out.e'
-    requirement = 'Test of a isotropic plate with known solution from Flac3D.'
+    input = 'kirchhoff_love_plate_tri6.i'
+    exodiff = 'kirchhoff_love_plate_tri6_out.e'
+    requirement = 'Kirchhoff-Love plate with clamped boundary conditions using Tri6 elements under self-weight loading. This test is used to verify the implementation of the shell element formulation and its ability to accurately model curved geometries and clamped boundary conditions.'
   []
-  [Flac3d_Plate_Concentrated_Loads]
+
+  [plate_concentrated_loads]
     type = 'Exodiff'
-    input = 'Flac3d_Plate_Concentrated_Loads.i'
-    exodiff = 'Flac3d_Plate_Concentrated_Loads_out.e'
-    requirement = 'Plate with concentrated load with known solution from Flac3D.'
+    input = 'plate_concentrated_loads_tri6.i'
+    exodiff = 'plate_concentrated_loads_tri6_out.e'
+    requirement = 'Plate with concentrated loads using Tri6 elements. This test is used to verify the implementation of the shell element formulation and its ability to accurately model concentrated loads.'
   []
+
   [pinched_cylinder_symm]
     type = 'Exodiff'
-    input = 'pinched_cylinder_symm.i'
-    exodiff = 'pinched_cylinder_symm_out.e'
-    requirement = 'Test for displacement of pinched cylinder.'
+    input = 'pinched_cylinder_symm_tri6.i'
+    exodiff = 'pinched_cylinder_symm_tri6_out.e'
+    requirement = 'Pinched cylinder with symmetric boundary conditions using Tri6 elements. This test is used to verify the implementation of the shell element formulation and its ability to accurately model symmetric geometries and boundary conditions.'
   []
-  [Plate_Cantilever]
+  [plate_cantilever_tri6]
     type = 'Exodiff'
-    input = 'Plate_Cantilever.i'
-    exodiff = 'Plate_Cantilever_out.e'
-    requirement = 'Constant bending of 0.05 applied to the tip of a Plate_Cantilever.'
+    input = 'plate_cantilever_tri6.i'
+    exodiff = 'plate_cantilever_tri6_out.e'
+    requirement = 'Cantilever plate with clamped boundary conditions using Tri6 elements. This test is used to verify the implementation of the shell element formulation and its ability to accurately model clamped boundary conditions.'
   []
 []

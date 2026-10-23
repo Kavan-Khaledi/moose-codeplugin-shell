@@ -1,9 +1,12 @@
-# based on the existing analytical Solutions, maximum deflection of the roof is 0.3086
+# This model is a widely used benchmark model denoted the Scordelis-Lo roof.
+# The maximum z-deformation is compared with the value given in "Proposed Standard Set of Problems to Test Finite Element Accuracy, Finite Elements in Analysis and Design, 1985".
+# Based on the existing analytical Solutions, maximum deflection of the roof should be 0.3086
+# The model results in a maximum vertical deflection of 0.3068 (0.5% error) using 6-noded shell elements.
 
 [Mesh]
   [file]
     type = FileMeshGenerator
-    file = comsol_roof_example.msh
+    file = Scordelis_Lo_roof_shell_tri6.msh
   []
 
   second_order = true
@@ -61,7 +64,7 @@
 
   [simply_rot_x]
     type = ADDirichletBC
-    variable = rot_x
+    variable = rot_y
     boundary = 'front'
     value = 0.0
   []
@@ -83,7 +86,7 @@
   petsc_options_value = ' lu       mumps'
   line_search = 'none'
   nl_rel_tol = 1e-10
-  nl_abs_tol = 1e-10
+  nl_abs_tol = 1e-7
   dt = 1
   end_time = 1
 []
@@ -91,35 +94,35 @@
 [Kernels]
 
   [solid_disp_x]
-    type = ADStressDivergenceTriangularShell
+    type = ADStressDivergenceTri6Shell
     component = 0
     variable = disp_x
     through_thickness_order = SECOND
     block = 'shell'
   []
   [solid_disp_y]
-    type = ADStressDivergenceTriangularShell
+    type = ADStressDivergenceTri6Shell
     component = 1
     variable = disp_y
     through_thickness_order = SECOND
     block = 'shell'
   []
   [solid_disp_z]
-    type = ADStressDivergenceTriangularShell
+    type = ADStressDivergenceTri6Shell
     component = 2
     variable = disp_z
     through_thickness_order = SECOND
     block = 'shell'
   []
   [solid_rot_x]
-    type = ADStressDivergenceTriangularShell
+    type = ADStressDivergenceTri6Shell
     component = 3
     variable = rot_x
     through_thickness_order = SECOND
     block = 'shell'
   []
   [solid_rot_y]
-    type = ADStressDivergenceTriangularShell
+    type = ADStressDivergenceTri6Shell
     component = 4
     variable = rot_y
     through_thickness_order = SECOND
@@ -127,41 +130,64 @@
   []
 
   [self_weight]
-    type = ShellDistributedLoad
-    value = 90
+    type = ADDistributedLoadShell
     variable = disp_z
-    function = 1
+    function = 90
     block = 'shell'
+    displacements= 'disp_x disp_y disp_z'
   []
 []
 
 [Materials]
 
   [elasticity_tshell]
-    type = ADComputeIsotropicElasticityTensorTriangularShell
+    type = ADComputeIsotropicElasticityTensorShell
     youngs_modulus = 4.32e8
     poissons_ratio = 0.0
     through_thickness_order = SECOND
     block = 'shell'
   []
   [strain_shell]
-    type = ADComputeIncrementalTriangularShellStrain
+    type =ADComputeIncrementalTri6ShellStrain
     displacements = 'disp_x disp_y disp_z'
     rotations = 'rot_x rot_y'
     thickness = 0.25
     through_thickness_order = SECOND
-    #user_defined_first_local_vector=' 1 0 0'
+    reference_first_local_direction = '0 1 0'
     block = 'shell'
   []
   [stress_shell]
-    type = ADComputeTriangularShellStress
+    type = ADComputeShellStress
     through_thickness_order = SECOND
-    thickness = 0.25
     block = 'shell'
   []
 []
 
 [AuxVariables]
+  [stress_00]
+    order = CONSTANT
+    family = MONOMIAL
+  []
+  [stress_11]
+    order = CONSTANT
+    family = MONOMIAL
+  []
+  [stress_22]
+    order = CONSTANT
+    family = MONOMIAL
+  []
+  [stress_01]
+    order = CONSTANT
+    family = MONOMIAL
+  []
+  [stress_02]
+    order = CONSTANT
+    family = MONOMIAL
+  []
+  [stress_12]
+    order = CONSTANT
+    family = MONOMIAL
+  []
   [force_1]
     order = CONSTANT
     family = MONOMIAL
@@ -233,126 +259,175 @@
 []
 
 [AuxKernels]
-  [force_1]
-    type = ADMaterialRealAux
-    variable = force_1
-    property = shell_force_1
+  [stress_00]
+    type = RankTwoAux
+    variable = stress_00
+    rank_two_tensor = local_stress_t_points_0
+    index_i = 0
+    index_j = 0
     execute_on = TIMESTEP_END
-    block = 'shell'
+  []
+  [stress_11]
+    type = RankTwoAux
+    variable = stress_11
+    rank_two_tensor = local_stress_t_points_0
+    index_i = 1
+    index_j = 1
+    execute_on = TIMESTEP_END
+  []
+  [stress_22]
+    type = RankTwoAux
+    variable = stress_22
+    rank_two_tensor = local_stress_t_points_0
+    index_i = 2
+    index_j = 2
+    execute_on = TIMESTEP_END
+  []
+  [stress_01]
+    type = RankTwoAux
+    variable = stress_01
+    rank_two_tensor = local_stress_t_points_0
+    index_i = 0
+    index_j = 1
+    execute_on = TIMESTEP_END
+  []
+  [stress_02]
+    type = RankTwoAux
+    variable = stress_02
+    rank_two_tensor = local_stress_t_points_0
+    index_i = 0
+    index_j = 2
+    execute_on = TIMESTEP_END
+  []
+  [stress_12]
+    type = RankTwoAux
+    variable = stress_12
+    rank_two_tensor = local_stress_t_points_0
+    index_i = 1
+    index_j = 2
+    execute_on = TIMESTEP_END
+  []
+
+  [force_1]
+    type = ShellResultantsAux
+    variable = force_1
+    stress_resultant = axial_force_0
+    thickness = 0.01
+    through_thickness_order = SECOND
+    execute_on = TIMESTEP_END
   []
   [force_2]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = force_2
-    property = shell_force_2
+    stress_resultant = axial_force_1
+    thickness = 0.01
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
-    block = 'shell'
   []
   [moment_11]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = moment_11
-    property = shell_moment_11
+    stress_resultant = bending_moment_0
+    thickness = 0.01
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
-    block = 'shell'
   []
   [moment_22]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = moment_22
-    property = shell_moment_22
+    stress_resultant = bending_moment_1
+    thickness = 0.01
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
-    block = 'shell'
   []
+
   [moment_12]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = moment_12
-    property = shell_moment_12
+    stress_resultant = bending_moment_01
+    thickness = 0.01
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
-    block = 'shell'
   []
   [shear_12]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = shear_12
-    property = shell_shear_12
+    stress_resultant = shear_force_01
+    thickness = 0.01
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
-    block = 'shell'
   []
   [shear_13]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = shear_13
-    property = shell_shear_13
+    stress_resultant = shear_force_02
+    thickness = 0.01
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
-    block = 'shell'
   []
   [shear_23]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = shear_23
-    property = shell_shear_23
+    stress_resultant = shear_force_12
+    thickness = 0.01
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
-    block = 'shell'
   []
   [first_axis_x]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = first_axis_x
-    property = first_local_axis_x
-    execute_on = TIMESTEP_END
-    block = 'shell'
+    property = first_local_vector
+    component = 0
   []
   [first_axis_y]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = first_axis_y
-    property = first_local_axis_y
-    execute_on = TIMESTEP_END
-    block = 'shell'
+    property = first_local_vector
+    component = 1
   []
   [first_axis_z]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = first_axis_z
-    property = first_local_axis_z
-    execute_on = TIMESTEP_END
-    block = 'shell'
+    property = first_local_vector
+    component = 2
   []
 
   [second_axis_x]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = second_axis_x
-    property = second_local_axis_x
-    execute_on = TIMESTEP_END
-    block = 'shell'
+    property = second_local_vector
+    component = 0
   []
   [second_axis_y]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = second_axis_y
-    property = second_local_axis_y
-    execute_on = TIMESTEP_END
-    block = 'shell'
+    property = second_local_vector
+    component = 1
   []
   [second_axis_z]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = second_axis_z
-    property = second_local_axis_z
-    execute_on = TIMESTEP_END
-    block = 'shell'
+    property = second_local_vector
+    component = 2
   []
 
   [normal_axis_x]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = normal_axis_x
-    property = normal_local_axis_x
-    execute_on = TIMESTEP_END
-    block = 'shell'
+    property = normal_local_vector
+    component = 0
   []
   [normal_axis_y]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = normal_axis_y
-    property = normal_local_axis_y
-    execute_on = TIMESTEP_END
-    block = 'shell'
+    property = normal_local_vector
+    component = 1
   []
   [normal_axis_z]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = normal_axis_z
-    property = normal_local_axis_z
-    execute_on = TIMESTEP_END
-    block = 'shell'
+    property = normal_local_vector
+    component = 2
   []
 []
 

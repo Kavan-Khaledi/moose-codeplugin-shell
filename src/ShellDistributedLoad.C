@@ -10,6 +10,7 @@
 #include "ShellDistributedLoad.h"
 #include "Function.h"
 
+
 registerMooseObject(MOOSEAPPNAME, ShellDistributedLoad);
 registerMooseObject(MOOSEAPPNAME, ADShellDistributedLoad);
 
