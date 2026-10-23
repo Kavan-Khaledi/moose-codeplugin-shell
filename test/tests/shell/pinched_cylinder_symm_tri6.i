@@ -2,21 +2,21 @@
 # Ref: Figure 10 and Table 6 from Dvorkin and Bathe, Eng. Comput., Vol. 1, 1984.
 # The results from FEM analysis matches well with the series solution and with
 # the solution presented by Dvorkin and Bathe (1984).
-# analytical results u=1.8248e-5 (with 15 triangular elements at each edge the FEM result is 1.762e-5 (3% error) )
+# analytical results u=1.8248e-5 (with 15 triangular elements at each edge the FEM result is -1.750572e-05 (4% error)
 
 [Mesh]
   [file]
     type = FileMeshGenerator
-    file = pinched_cylinder_symm.msh
+    file = pinched_cylinder_symm_tri6.msh
   []
   second_order = true
 
   [nodeset_1]
     type = BoundingBoxNodeSetGenerator
     input = file
-    top_right = '299.9 -0.1 299.9'
-    bottom_left = '300.1 0.1 300.1'
-    new_boundary = 'load' #BC
+    bottom_left = '299.9 -0.1 299.9'
+    top_right = '300.1 0.1 300.1'
+    new_boundary = 'load'
   []
 []
 
@@ -81,8 +81,7 @@
     type = ConstantRate
     variable = disp_x
     boundary = load
-    #point = '1 0 1'
-    rate = -0.25 # P = 1
+    rate = -0.25 # Quarter-symmetry model, total benchmark load P = 1
   []
 []
 
@@ -103,39 +102,37 @@
   dtmin = 1.0
   end_time = 1.0
   petsc_options = '-snes_ksp_ew'
-
-  # best overall
   petsc_options_iname = '-pc_type -pc_factor_mat_solver_package'
-  petsc_options_value = ' lu       mumps'
+  petsc_options_value = 'lu mumps'
 []
 
 [Kernels]
   [solid_disp_x]
-    type = ADStressDivergenceTriangularShell
+    type = ADStressDivergenceTri6Shell
     component = 0
     variable = disp_x
     through_thickness_order = SECOND
   []
   [solid_disp_y]
-    type = ADStressDivergenceTriangularShell
+    type = ADStressDivergenceTri6Shell
     component = 1
     variable = disp_y
     through_thickness_order = SECOND
   []
   [solid_disp_z]
-    type = ADStressDivergenceTriangularShell
+    type = ADStressDivergenceTri6Shell
     component = 2
     variable = disp_z
     through_thickness_order = SECOND
   []
   [solid_rot_x]
-    type = ADStressDivergenceTriangularShell
+    type = ADStressDivergenceTri6Shell
     component = 3
     variable = rot_x
     through_thickness_order = SECOND
   []
   [solid_rot_y]
-    type = ADStressDivergenceTriangularShell
+    type = ADStressDivergenceTri6Shell
     component = 4
     variable = rot_y
     through_thickness_order = SECOND
@@ -144,39 +141,50 @@
 
 [Materials]
   [elasticity]
-    type = ADComputeIsotropicElasticityTensorTriangularShell
+    type = ADComputeIsotropicElasticityTensorShell
     youngs_modulus = 3e6
     poissons_ratio = 0.3
     through_thickness_order = SECOND
   []
   [strain]
-    type = ADComputeIncrementalTriangularShellStrain
-    #user_defined_first_local_vector=' 0 0 1'
+    type = ADComputeIncrementalTri6ShellStrain
     displacements = 'disp_x disp_y disp_z'
     rotations = 'rot_x rot_y'
     thickness = 3
+    reference_first_local_direction = '0 0 1'
     through_thickness_order = SECOND
   []
   [stress]
-    type = ADComputeTriangularShellStress
-    thickness = 3
+    type = ADComputeShellStress
     through_thickness_order = SECOND
   []
 []
 
-[Postprocessors]
-  [disp_z2]
-    type = PointValue
-    point = '300 0 300'
-    variable = disp_x
-  []
-[]
-
-[Outputs]
-  exodus = true
-[]
-
 [AuxVariables]
+  [stress_00]
+    order = CONSTANT
+    family = MONOMIAL
+  []
+  [stress_11]
+    order = CONSTANT
+    family = MONOMIAL
+  []
+  [stress_22]
+    order = CONSTANT
+    family = MONOMIAL
+  []
+  [stress_01]
+    order = CONSTANT
+    family = MONOMIAL
+  []
+  [stress_02]
+    order = CONSTANT
+    family = MONOMIAL
+  []
+  [stress_12]
+    order = CONSTANT
+    family = MONOMIAL
+  []
   [force_1]
     order = CONSTANT
     family = MONOMIAL
@@ -190,6 +198,10 @@
     family = MONOMIAL
   []
   [moment_22]
+    order = CONSTANT
+    family = MONOMIAL
+  []
+  [moment_12]
     order = CONSTANT
     family = MONOMIAL
   []
@@ -244,102 +256,182 @@
 []
 
 [AuxKernels]
+  [stress_00]
+    type = RankTwoAux
+    variable = stress_00
+    rank_two_tensor = local_stress_t_points_0
+    index_i = 0
+    index_j = 0
+    execute_on = TIMESTEP_END
+  []
+  [stress_11]
+    type = RankTwoAux
+    variable = stress_11
+    rank_two_tensor = local_stress_t_points_0
+    index_i = 1
+    index_j = 1
+    execute_on = TIMESTEP_END
+  []
+  [stress_22]
+    type = RankTwoAux
+    variable = stress_22
+    rank_two_tensor = local_stress_t_points_0
+    index_i = 2
+    index_j = 2
+    execute_on = TIMESTEP_END
+  []
+  [stress_01]
+    type = RankTwoAux
+    variable = stress_01
+    rank_two_tensor = local_stress_t_points_0
+    index_i = 0
+    index_j = 1
+    execute_on = TIMESTEP_END
+  []
+  [stress_02]
+    type = RankTwoAux
+    variable = stress_02
+    rank_two_tensor = local_stress_t_points_0
+    index_i = 0
+    index_j = 2
+    execute_on = TIMESTEP_END
+  []
+  [stress_12]
+    type = RankTwoAux
+    variable = stress_12
+    rank_two_tensor = local_stress_t_points_0
+    index_i = 1
+    index_j = 2
+    execute_on = TIMESTEP_END
+  []
   [force_1]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = force_1
-    property = shell_force_1
+    stress_resultant = axial_force_0
+    thickness = 3
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
   []
   [force_2]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = force_2
-    property = shell_force_2
+    stress_resultant = axial_force_1
+    thickness = 3
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
   []
   [moment_11]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = moment_11
-    property = shell_moment_11
+    stress_resultant = bending_moment_0
+    thickness = 3
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
   []
   [moment_22]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = moment_22
-    property = shell_moment_22
+    stress_resultant = bending_moment_1
+    thickness = 3
+    through_thickness_order = SECOND
+    execute_on = TIMESTEP_END
+  []
+  [moment_12]
+    type = ShellResultantsAux
+    variable = moment_12
+    stress_resultant = bending_moment_01
+    thickness = 3
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
   []
   [shear_12]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = shear_12
-    property = shell_shear_12
+    stress_resultant = shear_force_01
+    thickness = 3
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
   []
   [shear_13]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = shear_13
-    property = shell_shear_13
+    stress_resultant = shear_force_02
+    thickness = 3
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
   []
   [shear_23]
-    type = ADMaterialRealAux
+    type = ShellResultantsAux
     variable = shear_23
-    property = shell_shear_23
+    stress_resultant = shear_force_12
+    thickness = 3
+    through_thickness_order = SECOND
     execute_on = TIMESTEP_END
   []
   [first_axis_x]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = first_axis_x
-    property = first_local_axis_x
-    execute_on = TIMESTEP_END
+    property = first_local_vector
+    component = 0
   []
   [first_axis_y]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = first_axis_y
-    property = first_local_axis_y
-    execute_on = TIMESTEP_END
+    property = first_local_vector
+    component = 1
   []
   [first_axis_z]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = first_axis_z
-    property = first_local_axis_z
-    execute_on = TIMESTEP_END
+    property = first_local_vector
+    component = 2
   []
-
   [second_axis_x]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = second_axis_x
-    property = second_local_axis_x
-    execute_on = TIMESTEP_END
+    property = second_local_vector
+    component = 0
   []
   [second_axis_y]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = second_axis_y
-    property = second_local_axis_y
-    execute_on = TIMESTEP_END
+    property = second_local_vector
+    component = 1
   []
   [second_axis_z]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = second_axis_z
-    property = second_local_axis_z
-    execute_on = TIMESTEP_END
+    property = second_local_vector
+    component = 2
   []
-
   [normal_axis_x]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = normal_axis_x
-    property = normal_local_axis_x
-    execute_on = TIMESTEP_END
+    property = normal_local_vector
+    component = 0
   []
   [normal_axis_y]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = normal_axis_y
-    property = normal_local_axis_y
-    execute_on = TIMESTEP_END
+    property = normal_local_vector
+    component = 1
   []
   [normal_axis_z]
-    type = MaterialRealAux
+    type = ShellLocalCoordinatesAux
     variable = normal_axis_z
-    property = normal_local_axis_z
-    execute_on = TIMESTEP_END
+    property = normal_local_vector
+    component = 2
   []
+[]
+
+[Postprocessors]
+  [disp_x_load]
+    type = PointValue
+    point = '300 0 300'
+    variable = disp_x
+  []
+[]
+
+[Outputs]
+  exodus = true
 []

@@ -1,5 +1,5 @@
 //* This file is part of the MOOSE framework
-//* https://www.mooseframework.org
+//* https://mooseframework.inl.gov
 //*
 //* All rights reserved, see COPYRIGHT for full restrictions
 //* https://github.com/idaholab/moose/blob/master/COPYRIGHT
@@ -7,13 +7,19 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#include "ADComputeIncrementalTriangularShellStrain.h"
+#include "ADComputeIncrementalTri6ShellStrain.h"
 #include "MooseMesh.h"
 #include "Assembly.h"
 #include "NonlinearSystem.h"
 #include "MooseVariable.h"
 #include "ArbitraryQuadrature.h"
 #include "DenseMatrix.h"
+#include "libmesh/mesh_base.h"
+#include "libmesh/mesh_tools.h"
+#include "libmesh/fe.h"
+#include "libmesh/enum_fe_family.h"
+#include "libmesh/enum_order.h"
+#include <vector>
 
 #include "libmesh/quadrature.h"
 #include "libmesh/utility.h"
@@ -22,13 +28,13 @@
 #include "libmesh/string_to_enum.h"
 #include "libmesh/quadrature_gauss.h"
 
-registerMooseObject(MOOSEAPPNAME, ADComputeIncrementalTriangularShellStrain);
+registerMooseObject(MOOSEAPPNAME, ADComputeIncrementalTri6ShellStrain);
 
 InputParameters
-ADComputeIncrementalTriangularShellStrain::validParams()
+ADComputeIncrementalTri6ShellStrain::validParams()
 {
   InputParameters params = Material::validParams();
-  params.addClassDescription("Compute a small strain increment for the shell.");
+  params.addClassDescription("Compute a small strain increment for a six-node triangular shell.");
   params.addRequiredCoupledVar(
       "rotations", "The rotations appropriate for the simulation geometry and coordinate system");
   params.addRequiredCoupledVar(
@@ -38,19 +44,19 @@ ADComputeIncrementalTriangularShellStrain::validParams()
       "thickness",
       "Thickness of the shell. Can be supplied as either a number or a variable name.");
   params.addRequiredParam<std::string>("through_thickness_order",
-                                       "Quadrature order in out of plane direction");
+                                       "Quadrature order in out-of-plane direction");
   params.addParam<bool>(
-      "large_strain", false, "Set to true to turn on finite strain calculations.");
-  params.addParam<RealVectorValue>(
-      "user_defined_first_local_vector",
-      "A user defined vector showing the orientation of the first local axis");
+      "large_strain", false, "Set to true to turn on finite-strain calculations.");
+  params.addParam<RealVectorValue>("reference_first_local_direction",
+                                   RealVectorValue(1, 0, 0),
+                                   "Vector that is projected onto an element to define the "
+                                   "direction of the first local coordinate axis e1.");
   return params;
 }
 
-ADComputeIncrementalTriangularShellStrain::ADComputeIncrementalTriangularShellStrain(
+ADComputeIncrementalTri6ShellStrain::ADComputeIncrementalTri6ShellStrain(
     const InputParameters & parameters)
   : Material(parameters),
-    _has_y_vector(isParamValid("user_defined_first_local_vector")),
     _nrot(coupledComponents("rotations")),
     _ndisp(coupledComponents("displacements")),
     _rot_num(_nrot),
@@ -82,23 +88,29 @@ ADComputeIncrementalTriangularShellStrain::ADComputeIncrementalTriangularShellSt
     _ge_old(),
     _J_map(),
     _J_map_old(),
-    _element_transformation_matrix(),
-    _element_transformation_matrix_old(),
+    _local_transformation_matrix(),
+    _local_transformation_matrix_old(),
     _covariant_transformation_matrix(),
     _covariant_transformation_matrix_old(),
     _contravariant_transformation_matrix(),
     _contravariant_transformation_matrix_old(),
     _total_global_strain(),
     _sol(_nonlinear_sys.currentSolution()),
-    _sol_old(_nonlinear_sys.solutionOld())
+    _sol_old(_nonlinear_sys.solutionOld()),
+    _ref_first_local_dir(getParam<RealVectorValue>("reference_first_local_direction"))
 {
-  // Checking for consistency between length of the provided displacements and rotations vector
   if (_ndisp != 3 || _nrot != 2)
-    mooseError("ADComputeIncrementalTriangularShellStrain: The number of variables supplied in "
-               "'displacements' "
-               "must be 3 and that in 'rotations' must be 2.");
+    mooseError("ADComputeIncrementalTri6ShellStrain: The number of variables supplied in "
+               "'displacements' must be 3 and that in 'rotations' must be 2.");
 
-  // fetch coupled variables and gradients (as stateful properties if necessary)
+  if (!_mesh.hasSecondOrderElements())
+    mooseError("ADComputeIncrementalTri6ShellStrain: The six-node triangular shell "
+               "requires second-order elements.");
+
+  if (MooseUtils::absoluteFuzzyEqual(_ref_first_local_dir.norm(), 0.0, 1e-3))
+    mooseError("The norm of the defined first local axis is less than the acceptable tolerance "
+               "(1e-3).");
+
   for (unsigned int i = 0; i < _ndisp; ++i)
   {
     MooseVariable * disp_variable = getVar("displacements", i);
@@ -111,9 +123,10 @@ ADComputeIncrementalTriangularShellStrain::ADComputeIncrementalTriangularShellSt
     }
   }
 
-  _t_qrule = std::make_unique<QGauss>(
+  _t_qrule = std::make_unique<libMesh::QGauss>(
       1, Utility::string_to_enum<Order>(getParam<std::string>("through_thickness_order")));
   _t_points = _t_qrule->get_points();
+
   _strain_increment.resize(_t_points.size());
   _total_strain.resize(_t_points.size());
   _total_strain_old.resize(_t_points.size());
@@ -129,24 +142,15 @@ ADComputeIncrementalTriangularShellStrain::ADComputeIncrementalTriangularShellSt
   _dxyz_dxi_old.resize(_t_points.size());
   _dxyz_deta_old.resize(_t_points.size());
   _dxyz_dzeta_old.resize(_t_points.size());
-  _element_transformation_matrix.resize(_t_points.size());
-  _element_transformation_matrix_old.resize(_t_points.size());
+  _local_transformation_matrix.resize(_t_points.size());
+  _local_transformation_matrix_old.resize(_t_points.size());
   _covariant_transformation_matrix.resize(_t_points.size());
   _covariant_transformation_matrix_old.resize(_t_points.size());
   _contravariant_transformation_matrix.resize(_t_points.size());
   _contravariant_transformation_matrix_old.resize(_t_points.size());
   _total_global_strain.resize(_t_points.size());
 
-  _transformation_matrix = &declareProperty<RankTwoTensor>("transformation_matrix_element");
-  _first_local_axis_x = &declareProperty<Real>("first_local_axis_x");
-  _first_local_axis_y = &declareProperty<Real>("first_local_axis_y");
-  _first_local_axis_z = &declareProperty<Real>("first_local_axis_z");
-  _second_local_axis_x = &declareProperty<Real>("second_local_axis_x");
-  _second_local_axis_y = &declareProperty<Real>("second_local_axis_y");
-  _second_local_axis_z = &declareProperty<Real>("second_local_axis_z");
-  _normal_local_axis_x = &declareProperty<Real>("normal_local_axis_x");
-  _normal_local_axis_y = &declareProperty<Real>("normal_local_axis_y");
-  _normal_local_axis_z = &declareProperty<Real>("normal_local_axis_z");
+  _transformation_matrix = &declareADProperty<RankTwoTensor>("transformation_matrix_element");
 
   for (unsigned int i = 0; i < _t_points.size(); ++i)
   {
@@ -172,11 +176,11 @@ ADComputeIncrementalTriangularShellStrain::ADComputeIncrementalTriangularShellSt
         &declareADProperty<RealVectorValue>("dxyz_dzeta_t_points_" + std::to_string(i));
     _dxyz_dzeta_old[i] =
         &getMaterialPropertyOldByName<RealVectorValue>("dxyz_dzeta_t_points_" + std::to_string(i));
-    // Create rotation matrix and total strain global for output purposes only
-    _element_transformation_matrix[i] =
-        &declareProperty<RankTwoTensor>("element_transformation_t_points_" + std::to_string(i));
-    _element_transformation_matrix_old[i] = &getMaterialPropertyOldByName<RankTwoTensor>(
-        "element_transformation_t_points_" + std::to_string(i));
+
+    _local_transformation_matrix[i] =
+        &declareProperty<RankTwoTensor>("local_transformation_t_points_" + std::to_string(i));
+    _local_transformation_matrix_old[i] = &getMaterialPropertyOldByName<RankTwoTensor>(
+        "local_transformation_t_points_" + std::to_string(i));
     _covariant_transformation_matrix[i] =
         &declareProperty<RankTwoTensor>("covariant_transformation_t_points_" + std::to_string(i));
     _covariant_transformation_matrix_old[i] = &getMaterialPropertyOldByName<RankTwoTensor>(
@@ -189,54 +193,45 @@ ADComputeIncrementalTriangularShellStrain::ADComputeIncrementalTriangularShellSt
         &declareProperty<RankTwoTensor>("total_global_strain_t_points_" + std::to_string(i));
   }
 
-  // used later for computing local coordinate system
-  _x2 = {0, 1, 0};
-  _x3 = {0, 0, 1};
+  _e1(0) = 1;
+  _e2(1) = 1;
+  _e3(2) = 1;
 }
 
 void
-ADComputeIncrementalTriangularShellStrain::initQpStatefulProperties()
+ADComputeIncrementalTri6ShellStrain::initQpStatefulProperties()
 {
-  unsigned int dim = _current_elem->dim();
-  _all_neighbors_in_xy = true;
-  if ((dim != 2))
-    mooseError("ADComputeIncrementalTriangularShellStrain: Shell element is implemented only for "
-               "2D elements");
+  const unsigned int dim = _current_elem->dim();
+
+  if (dim != 2)
+    mooseError("ADComputeIncrementalTri6ShellStrain: Shell element is implemented only for "
+               "2D elements.");
+
   if (_current_elem->n_nodes() != 6)
-    mooseError("ADComputeIncrementalTriangularShellStrain: Shell element is implemented only for "
-               "six noeded triangular elements.");
-  //  if (_qrule->get_points().size() != 4)
-  //    mooseError("ADComputeIncrementalTriangularShellStrain: Shell element needs to have exactly
-  //    four "
-  //               "quadrature points.");
+    mooseError("ADComputeIncrementalTri6ShellStrain: Shell element needs to have exactly "
+               "six nodes.");
 
   computeGMatrix();
   computeBMatrix();
 }
 
 void
-ADComputeIncrementalTriangularShellStrain::computeProperties()
+ADComputeIncrementalTri6ShellStrain::computeProperties()
 {
+  _2d_points = _qrule->get_points();
 
-  // quadrature points in isoparametric space
-  _2d_points = _qrule->get_points(); // would be in 2D
-
-  for (unsigned int i = 0; i < 6; ++i)
-    _nodes[i] = _current_elem->node_ptr(i);
-
-  // derivatives of shape functions (dphidxi, dphideta and dphidzeta) evaluated at quadrature points
-  // (in isoparametric space).
-  unsigned int dim = _current_elem->dim();
+  const unsigned int dim = _current_elem->dim();
   FEType fe_type(Utility::string_to_enum<Order>("SECOND"),
                  Utility::string_to_enum<FEFamily>("LAGRANGE"));
   auto & fe = _fe_problem.assembly(_tid, _nonlinear_sys.number()).getFE(fe_type, dim);
   _dphidxi_map = fe->get_fe_map().get_dphidxi_map();
   _dphideta_map = fe->get_fe_map().get_dphideta_map();
-  _dphidzeta_map = fe->get_fe_map().get_dphidzeta_map();
   _phi_map = fe->get_fe_map().get_phi_map();
 
+  for (unsigned int i = 0; i < _nodes.size(); ++i)
+    _nodes[i] = _current_elem->node_ptr(i);
+
   for (unsigned int i = 0; i < _2d_points.size(); ++i)
-  {
     for (unsigned int j = 0; j < _t_points.size(); ++j)
     {
       (*_ge[j])[i] = (*_ge_old[j])[i];
@@ -245,28 +240,25 @@ ADComputeIncrementalTriangularShellStrain::computeProperties()
       (*_dxyz_deta[j])[i] = (*_dxyz_deta_old[j])[i];
       (*_dxyz_dzeta[j])[i] = (*_dxyz_dzeta_old[j])[i];
       (*_B[j])[i] = (*_B_old[j])[i];
+      (*_local_transformation_matrix[j])[i] = (*_local_transformation_matrix_old[j])[i];
       (*_covariant_transformation_matrix[j])[i] = (*_covariant_transformation_matrix_old[j])[i];
-      (*_element_transformation_matrix[j])[i] = (*_element_transformation_matrix_old[j])[i];
       (*_contravariant_transformation_matrix[j])[i] =
           (*_contravariant_transformation_matrix_old[j])[i];
     }
-  }
 
   computeSolnVector();
-
-  // computeNodeNormal();
+  computeNodeNormal();
 
   for (unsigned int i = 0; i < _2d_points.size(); ++i)
-  {
     for (unsigned int j = 0; j < _t_points.size(); ++j)
     {
-      // compute strain increment in covariant coordinate system using B and _soln_vector
-      for (unsigned int temp1 = 0; temp1 < 5; ++temp1)
+      for (unsigned int row = 0; row < 5; ++row)
       {
-        _strain_vector(temp1) = 0.0;
-        for (unsigned int temp2 = 0; temp2 < 30; ++temp2)
-          _strain_vector(temp1) += (*_B[j])[i](temp1, temp2) * _soln_vector(temp2);
+        _strain_vector(row) = 0.0;
+        for (unsigned int column = 0; column < 30; ++column)
+          _strain_vector(row) += (*_B[j])[i](row, column) * _soln_vector(column);
       }
+
       (*_strain_increment[j])[i](0, 0) = _strain_vector(0);
       (*_strain_increment[j])[i](1, 1) = _strain_vector(1);
       (*_strain_increment[j])[i](0, 1) = _strain_vector(2);
@@ -278,174 +270,173 @@ ADComputeIncrementalTriangularShellStrain::computeProperties()
 
       (*_total_strain[j])[i] = (*_total_strain_old[j])[i] + (*_strain_increment[j])[i];
 
-      for (unsigned int ii = 0; ii < 3; ++ii)
-        for (unsigned int jj = 0; jj < 3; ++jj)
+      for (unsigned int ii = 0; ii < Moose::dim; ++ii)
+        for (unsigned int jj = 0; jj < Moose::dim; ++jj)
           _unrotated_total_strain(ii, jj) = MetaPhysicL::raw_value((*_total_strain[j])[i](ii, jj));
+
       (*_total_global_strain[j])[i] = (*_contravariant_transformation_matrix[j])[i] *
                                       _unrotated_total_strain *
                                       (*_contravariant_transformation_matrix[j])[i].transpose();
     }
-
-    ADRealVectorValue e3 = _node_normal[0] + _node_normal[1] + _node_normal[2] + _node_normal[3] +
-                           _node_normal[4] + _node_normal[5];
-    e3 /= e3.norm();
-    ADRealVectorValue e1;
-    ADRealVectorValue e2;
-
-    if (_has_y_vector)
-    {
-      e1 = getParam<RealVectorValue>("user_defined_first_local_vector");
-      e1 /= e1.norm();
-      if (std::abs(MetaPhysicL::raw_value(e1 * e3)) > 0.999)
-      {
-        mooseError("The defined 1st local axis is perpenticular to one of the shell elements ");
-      }
-      else
-      {
-        e1 = (e1 - (e1 * e3) * e3);
-      }
-    }
-    else
-    {
-      e1 = _x2.cross(e3);
-
-      if (MooseUtils::absoluteFuzzyEqual(e1.norm(), 0.0, 1e-6))
-        e1 = {0, 0, 1};
-    }
-    e1 /= e1.norm();
-    e2 = e3.cross(e1);
-
-    (*_normal_local_axis_x)[i] = MetaPhysicL::raw_value(e3(0));
-    (*_normal_local_axis_y)[i] = MetaPhysicL::raw_value(e3(1));
-    (*_normal_local_axis_z)[i] = MetaPhysicL::raw_value(e3(2));
-
-    (*_first_local_axis_x)[i] = MetaPhysicL::raw_value(e1(0));
-    (*_first_local_axis_y)[i] = MetaPhysicL::raw_value(e1(1));
-    (*_first_local_axis_z)[i] = MetaPhysicL::raw_value(e1(2));
-
-    (*_second_local_axis_x)[i] = MetaPhysicL::raw_value(e2(0));
-    (*_second_local_axis_y)[i] = MetaPhysicL::raw_value(e2(1));
-    (*_second_local_axis_z)[i] = MetaPhysicL::raw_value(e2(2));
-  }
 }
 
-void
-ADComputeIncrementalTriangularShellStrain::computeGMatrix()
+// Evaluate the unnormalized quadratic-surface normal at a TRI6 node.
+// Use libMesh's SECOND-order LAGRANGE shape-function derivatives rather
+// than hard-coded TRI6 derivative coefficients.
+namespace
 {
-  // quadrature points in isoparametric space
-  _2d_points = _qrule->get_points(); // would be in 2D
+RealVectorValue
+tri6NormalAtNode(const libMesh::Elem & elem, const unsigned int k)
+{
+  if (elem.dim() != 2 || elem.n_nodes() != 6 || k >= 6)
+    mooseError("tri6NormalAtNode requires a TRI6 element and local node index 0..5");
 
-  unsigned int dim = _current_elem->dim();
+  const libMesh::Point p = elem.master_point(k);
 
-  // derivatives of shape functions (dphidxi, dphideta and dphidzeta) evaluated at quadrature points
-  // (in isoparametric space).
+  RealVectorValue g1(0., 0., 0.);
+  RealVectorValue g2(0., 0., 0.);
+
+  for (unsigned int a = 0; a < 6; ++a)
+  {
+    const Real dN_dxi =
+        libMesh::FE<2, libMesh::LAGRANGE>::shape_deriv(&elem, libMesh::SECOND, a, 0, p);
+    const Real dN_deta =
+        libMesh::FE<2, libMesh::LAGRANGE>::shape_deriv(&elem, libMesh::SECOND, a, 1, p);
+
+    const auto & X = elem.point(a);
+    for (unsigned int c = 0; c < 3; ++c)
+    {
+      g1(c) += dN_dxi * X(c);
+      g2(c) += dN_deta * X(c);
+    }
+  }
+
+  // Magnitude provides the local surface-Jacobian weighting.
+  return g1.cross(g2);
+}
+} // namespace
+
+void
+ADComputeIncrementalTri6ShellStrain::computeGMatrix()
+{
+  using std::sqrt;
+
+  _2d_points = _qrule->get_points();
+
+  const unsigned int dim = _current_elem->dim();
   FEType fe_type(Utility::string_to_enum<Order>("SECOND"),
                  Utility::string_to_enum<FEFamily>("LAGRANGE"));
   auto & fe = _fe_problem.assembly(_tid, _nonlinear_sys.number()).getFE(fe_type, dim);
   _dphidxi_map = fe->get_fe_map().get_dphidxi_map();
   _dphideta_map = fe->get_fe_map().get_dphideta_map();
-  _dphidzeta_map = fe->get_fe_map().get_dphidzeta_map();
   _phi_map = fe->get_fe_map().get_phi_map();
 
-  for (unsigned int i = 0; i < 6; ++i)
+  for (unsigned int i = 0; i < _nodes.size(); ++i)
     _nodes[i] = _current_elem->node_ptr(i);
 
-  ADRealVectorValue x;
-  ADRealVectorValue y;
-  ADRealVectorValue normal;
+  // Deliberately build adjacency and recompute nodal normals for every element.
+  // This avoids a material-level cache, at the expense of repeated work.
+  // The adjacency must contain ALL elements touching each node (MPI ghosting).
+  const auto & mesh = _mesh.getMesh();
+  std::vector<std::vector<dof_id_type>> nodes_to_elem_map;
+  libMesh::MeshTools::build_nodes_to_elem_map(mesh, nodes_to_elem_map);
 
-  for (unsigned int k = 0; k < 6; ++k)
+  for (unsigned int k = 0; k < _nodes.size(); ++k)
   {
-    if (k == 0)
+    const dof_id_type node_id = _nodes[k]->id();
+    if (node_id >= nodes_to_elem_map.size())
+      mooseError("No node-to-element adjacency for TRI6 node ", node_id);
+
+    RealVectorValue normal_sum(0., 0., 0.);
+    unsigned int contributions = 0;
+
+    for (const dof_id_type elem_id : nodes_to_elem_map[node_id])
     {
-      x = (*_nodes[3] - *_nodes[0]);
-      y = (*_nodes[5] - *_nodes[0]);
+      const libMesh::Elem * neighbor = mesh.query_elem_ptr(elem_id);
+      if (!neighbor)
+        mooseError("Missing adjacent element ", elem_id, " at TRI6 node ", node_id,
+                   ". Ensure complete MPI ghosting of the nodal patch.");
+
+      // Do not mix normals of distinct shell blocks at a shared node.
+      if (!neighbor->active() ||
+          neighbor->subdomain_id() != _current_elem->subdomain_id())
+        continue;
+
+      if (neighbor->dim() != 2 || neighbor->n_nodes() != 6)
+        mooseError("Expected TRI6 neighbor at node ", node_id,
+                   ", but found element ", elem_id);
+
+      unsigned int local_node = 0;
+      for (; local_node < 6; ++local_node)
+        if (neighbor->node_id(local_node) == node_id)
+          break;
+      if (local_node == 6)
+        mooseError("Invalid node-to-element adjacency at node ", node_id);
+
+      const RealVectorValue contribution = tri6NormalAtNode(*neighbor, local_node);
+      if (contribution.norm() < 1e-14)
+        mooseError("Degenerate TRI6 normal at node ", node_id,
+                   " in element ", elem_id);
+
+      normal_sum += contribution;
+      ++contributions;
     }
-    else if (k == 1)
-    {
-      x = (*_nodes[4] - *_nodes[1]);
-      y = (*_nodes[3] - *_nodes[1]);
-    }
-    else if (k == 2)
-    {
-      x = (*_nodes[5] - *_nodes[2]);
-      y = (*_nodes[4] - *_nodes[2]);
-    }
-    else if (k == 3)
-    {
-      x = (*_nodes[4] - *_nodes[3]);
-      y = (*_nodes[5] - *_nodes[3]);
-    }
-    else if (k == 4)
-    {
-      x = (*_nodes[5] - *_nodes[4]);
-      y = (*_nodes[3] - *_nodes[4]);
-    }
-    else if (k == 5)
-    {
-      x = (*_nodes[3] - *_nodes[5]);
-      y = (*_nodes[4] - *_nodes[5]);
-    }
-    normal = x.cross(y);
-    normal /= normal.norm();
-    _node_normal[k] = normal;
+
+    if (!contributions || normal_sum.norm() < 1e-14)
+      mooseError("Cannot construct averaged TRI6 normal at node ", node_id,
+                 ". Check element orientation and nodal adjacency.");
+
+    _node_normal[k] = normal_sum / normal_sum.norm();
   }
 
-  ADRankTwoTensor a;
-  ADDenseMatrix b(5, 30);
-  ADRealVectorValue c;
-  RankTwoTensor d;
+  ADRankTwoTensor zero_ad_tensor;
+  ADDenseMatrix zero_b_matrix(5, 30);
+  ADRealVectorValue zero_ad_vector;
+  RankTwoTensor zero_tensor;
+
   for (unsigned int t = 0; t < _t_points.size(); ++t)
   {
-    (*_strain_increment[t])[_qp] = a;
-    (*_total_strain[t])[_qp] = a;
-    (*_B[t])[_qp] = b;
-    (*_ge[t])[_qp] = a;
+    (*_strain_increment[t])[_qp] = zero_ad_tensor;
+    (*_total_strain[t])[_qp] = zero_ad_tensor;
+    (*_B[t])[_qp] = zero_b_matrix;
+    (*_ge[t])[_qp] = zero_ad_tensor;
     (*_J_map[t])[_qp] = 0;
-    (*_dxyz_dxi[t])[_qp] = c;
-    (*_dxyz_deta[t])[_qp] = c;
-    (*_dxyz_dzeta[t])[_qp] = c;
-    (*_element_transformation_matrix[t])[_qp] = d;
-    (*_covariant_transformation_matrix[t])[_qp] = d;
-    (*_contravariant_transformation_matrix[t])[_qp] = d;
+    (*_dxyz_dxi[t])[_qp] = zero_ad_vector;
+    (*_dxyz_deta[t])[_qp] = zero_ad_vector;
+    (*_dxyz_dzeta[t])[_qp] = zero_ad_vector;
+    (*_local_transformation_matrix[t])[_qp] = zero_tensor;
+    (*_covariant_transformation_matrix[t])[_qp] = zero_tensor;
+    (*_contravariant_transformation_matrix[t])[_qp] = zero_tensor;
   }
 
-  // calculating derivatives of shape function in physical space (dphi/dx, dphi/dy, dphi/dz) at
-  // quadrature points these are g_{i} in Dvorkin's paper
   for (unsigned int i = 0; i < _2d_points.size(); ++i)
-  {
     for (unsigned int j = 0; j < _t_points.size(); ++j)
     {
       (*_dxyz_dxi[j])[i].zero();
-      for (unsigned int component = 0; component < 3; ++component)
-      {
-        (*_dxyz_dxi[j])[i](component) = 0.0;
-        (*_dxyz_deta[j])[i](component) = 0.0;
-        (*_dxyz_dzeta[j])[i](component) = 0.0;
+      (*_dxyz_deta[j])[i].zero();
+      (*_dxyz_dzeta[j])[i].zero();
 
+      for (unsigned int component = 0; component < Moose::dim; ++component)
         for (unsigned int k = 0; k < _nodes.size(); ++k)
         {
-          (*_dxyz_dxi[j])[i](component) += _dphidxi_map[k][i] * ((*_nodes[k])(component)) +
+          (*_dxyz_dxi[j])[i](component) += _dphidxi_map[k][i] * (*_nodes[k])(component) +
                                            _t_points[j](0) / 2.0 * _thickness[i] *
                                                _dphidxi_map[k][i] * _node_normal[k](component);
-          (*_dxyz_deta[j])[i](component) += _dphideta_map[k][i] * ((*_nodes[k])(component)) +
+          (*_dxyz_deta[j])[i](component) += _dphideta_map[k][i] * (*_nodes[k])(component) +
                                             _t_points[j](0) / 2.0 * _thickness[i] *
                                                 _dphideta_map[k][i] * _node_normal[k](component);
           (*_dxyz_dzeta[j])[i](component) +=
               _thickness[i] * _phi_map[k][i] * _node_normal[k](component) / 2.0;
         }
-      }
     }
-  }
 
   for (unsigned int i = 0; i < _2d_points.size(); ++i)
-  {
     for (unsigned int j = 0; j < _t_points.size(); ++j)
     {
-      // calculate gij for elasticity tensor
       ADRankTwoTensor gmn;
       RankTwoTensor J;
-      for (unsigned int component = 0; component < 3; ++component)
+
+      for (unsigned int component = 0; component < Moose::dim; ++component)
       {
         gmn(0, 0) += (*_dxyz_dxi[j])[i](component) * (*_dxyz_dxi[j])[i](component);
         gmn(1, 1) += (*_dxyz_deta[j])[i](component) * (*_dxyz_deta[j])[i](component);
@@ -458,134 +449,112 @@ ADComputeIncrementalTriangularShellStrain::computeGMatrix()
         J(1, component) = MetaPhysicL::raw_value((*_dxyz_deta[j])[i](component));
         J(2, component) = MetaPhysicL::raw_value((*_dxyz_dzeta[j])[i](component));
       }
+
       gmn(1, 0) = gmn(0, 1);
       gmn(2, 0) = gmn(0, 2);
       gmn(2, 1) = gmn(1, 2);
 
-      ADRankTwoTensor gmninv_temp = gmn.inverse();
-      using std::sqrt;
       (*_J_map[j])[i] = sqrt(gmn.det());
       (*_covariant_transformation_matrix[j])[i] = J;
+      (*_contravariant_transformation_matrix[j])[i] = J.inverse();
 
-      (*_contravariant_transformation_matrix[j])[i] =
-          (*_covariant_transformation_matrix[j])[i].inverse();
+      const Real norm_x = sqrt(J(0, 0) * J(0, 0) + J(0, 1) * J(0, 1) + J(0, 2) * J(0, 2));
+      const Real norm_y = sqrt(J(1, 0) * J(1, 0) + J(1, 1) * J(1, 1) + J(1, 2) * J(1, 2));
+      const Real norm_z = sqrt(J(2, 0) * J(2, 0) + J(2, 1) * J(2, 1) + J(2, 2) * J(2, 2));
 
-      Real normx = std::sqrt(J(0, 0) * J(0, 0) + J(0, 1) * J(0, 1) + J(0, 2) * J(0, 2));
-      Real normy = std::sqrt(J(1, 0) * J(1, 0) + J(1, 1) * J(1, 1) + J(1, 2) * J(1, 2));
-      Real normz = std::sqrt(J(2, 0) * J(2, 0) + J(2, 1) * J(2, 1) + J(2, 2) * J(2, 2));
+      J(0, 0) /= norm_x;
+      J(0, 1) /= norm_x;
+      J(0, 2) /= norm_x;
 
-      J(0, 0) /= normx;
-      J(0, 1) /= normx;
-      J(0, 2) /= normx;
+      J(1, 0) /= norm_y;
+      J(1, 1) /= norm_y;
+      J(1, 2) /= norm_y;
 
-      J(1, 0) /= normy;
-      J(1, 1) /= normy;
-      J(1, 2) /= normy;
+      J(2, 0) /= norm_z;
+      J(2, 1) /= norm_z;
+      J(2, 2) /= norm_z;
 
-      J(2, 0) /= normz;
-      J(2, 1) /= normz;
-      J(2, 2) /= normz;
+      computeLocalCoordinates((*_dxyz_dzeta[j])[i]);
 
-      //(*_transformation_matrix)[i] = J;
-
-      // calculate ge
-      ADRealVectorValue e3 = (*_dxyz_dzeta[j])[i] / (*_dxyz_dzeta[j])[i].norm();
-      ADRealVectorValue e1;
-      ADRealVectorValue e2;
-
-      if (_has_y_vector)
-      {
-        e1 = getParam<RealVectorValue>("user_defined_first_local_vector");
-        e1 /= e1.norm();
-        if (std::abs(MetaPhysicL::raw_value(e1 * e3)) > 0.999)
-          mooseError("The defined 1st local axis is perpenticular to one of the shell elements ");
-        else
-          e1 = (e1 - (e1 * e3) * e3);
-      }
-      else
-      {
-        e1 = _x2.cross(e3);
-        if (MooseUtils::absoluteFuzzyEqual(e1.norm(), 0.0, 1e-6))
-          e1 = _x3;
-      }
-      e1 /= e1.norm();
-      e2 = e3.cross(e1);
-
-      ADRankTwoTensor local_rotation_mat;
-      local_rotation_mat(0, 0) = e1(0);
-      local_rotation_mat(0, 1) = e1(1);
-      local_rotation_mat(0, 2) = e1(2);
-      local_rotation_mat(1, 0) = e2(0);
-      local_rotation_mat(1, 1) = e2(1);
-      local_rotation_mat(1, 2) = e2(2);
-      local_rotation_mat(2, 0) = e3(0);
-      local_rotation_mat(2, 1) = e3(1);
-      local_rotation_mat(2, 2) = e3(2);
-
-      for (unsigned int ii = 0; ii < 3; ++ii)
-        for (unsigned int jj = 0; jj < 3; ++jj)
-          (*_element_transformation_matrix[j])[i](ii, jj) =
+      const auto local_rotation_mat = ADRankTwoTensor::initializeFromRows(_e1, _e2, _e3);
+      for (const auto ii : make_range(Moose::dim))
+        for (const auto jj : make_range(Moose::dim))
+          (*_local_transformation_matrix[j])[i](ii, jj) =
               MetaPhysicL::raw_value(local_rotation_mat(ii, jj));
 
-      ADRealVectorValue gi0 =
-          ((*_dxyz_deta[j])[i].cross((*_dxyz_dzeta[j])[i])) /
-          ((*_dxyz_dxi[j])[i] * ((*_dxyz_deta[j])[i].cross((*_dxyz_dzeta[j])[i])));
-      ADRealVectorValue gi1 =
-          ((*_dxyz_dzeta[j])[i].cross((*_dxyz_dxi[j])[i])) /
-          ((*_dxyz_dxi[j])[i] * ((*_dxyz_deta[j])[i].cross((*_dxyz_dzeta[j])[i])));
-      ADRealVectorValue gi2 =
-          ((*_dxyz_dxi[j])[i].cross((*_dxyz_deta[j])[i])) /
-          ((*_dxyz_dxi[j])[i] * ((*_dxyz_deta[j])[i].cross((*_dxyz_dzeta[j])[i])));
+      const auto denom = (*_dxyz_dxi[j])[i] * (*_dxyz_deta[j])[i].cross((*_dxyz_dzeta[j])[i]);
+      const auto gi0 = (*_dxyz_deta[j])[i].cross((*_dxyz_dzeta[j])[i]) / denom;
+      const auto gi1 = (*_dxyz_dzeta[j])[i].cross((*_dxyz_dxi[j])[i]) / denom;
+      const auto gi2 = (*_dxyz_dxi[j])[i].cross((*_dxyz_deta[j])[i]) / denom;
 
-      (*_ge[j])[i](0, 0) = gi0 * e1;
-      (*_ge[j])[i](0, 1) = gi0 * e2;
-      (*_ge[j])[i](0, 2) = gi0 * e3;
-      (*_ge[j])[i](1, 0) = gi1 * e1;
-      (*_ge[j])[i](1, 1) = gi1 * e2;
-      (*_ge[j])[i](1, 2) = gi1 * e3;
-      (*_ge[j])[i](2, 0) = gi2 * e1;
-      (*_ge[j])[i](2, 1) = gi2 * e2;
-      (*_ge[j])[i](2, 2) = gi2 * e3;
+      (*_ge[j])[i](0, 0) = gi0 * _e1;
+      (*_ge[j])[i](0, 1) = gi0 * _e2;
+      (*_ge[j])[i](0, 2) = gi0 * _e3;
+      (*_ge[j])[i](1, 0) = gi1 * _e1;
+      (*_ge[j])[i](1, 1) = gi1 * _e2;
+      (*_ge[j])[i](1, 2) = gi1 * _e3;
+      (*_ge[j])[i](2, 0) = gi2 * _e1;
+      (*_ge[j])[i](2, 1) = gi2 * _e2;
+      (*_ge[j])[i](2, 2) = gi2 * _e3;
     }
-  }
 }
 
 void
-ADComputeIncrementalTriangularShellStrain::computeNodeNormal()
+ADComputeIncrementalTri6ShellStrain::computeLocalCoordinates(
+    const ADRealVectorValue & g3)
+{
+  using std::abs;
+
+  // Unit director in the thickness direction at this integration point.
+  if (MetaPhysicL::raw_value(g3.norm()) < 1e-14)
+    mooseError("Zero thickness-direction vector in shell element ", _current_elem->id());
+  _e3 = g3 / g3.norm();
+
+  _e1 = _ref_first_local_dir;
+  _e1 /= _e1.norm();
+
+  if (MooseUtils::absoluteFuzzyEqual(abs(_e1 * _e3), 1.0, 0.05 * libMesh::pi / 180.0))
+    mooseError("The reference first local direction must not be parallel to the shell thickness direction.");
+
+  _e2 = _e3.cross(_e1);
+  _e2 /= _e2.norm();
+
+  _e1 = _e2.cross(_e3);
+  _e1 /= _e1.norm();
+}
+
+void
+ADComputeIncrementalTri6ShellStrain::computeNodeNormal()
 {
   for (unsigned int k = 0; k < _nodes.size(); ++k)
     _node_normal[k] = _node_normal_old[k];
 }
 
 void
-ADComputeIncrementalTriangularShellStrain::computeBMatrix()
+ADComputeIncrementalTri6ShellStrain::computeBMatrix()
 {
 
-  // compute nodal local axis
   for (unsigned int k = 0; k < _nodes.size(); ++k)
   {
-    _v1[k] = _x2.cross(_node_normal[k]);
+    _v2[k] = _node_normal[k].cross(_ref_first_local_dir);
 
-    // If x2 is parallel to node normal, set V1 to x3
-    if (MooseUtils::absoluteFuzzyEqual(_v1[k].norm(), 0.0, 1e-6))
-      _v1[k] = _x3;
+    if (MooseUtils::absoluteFuzzyEqual(_v2[k].norm(), 0.0, 1e-6))
+      mooseError("The reference first local direction is parallel to a nodal shell normal.");
 
-    _v1[k] /= _v1[k].norm();
-    _v2[k] = _node_normal[k].cross(_v1[k]);
     _v2[k] /= _v2[k].norm();
+    _v1[k] = _v2[k].cross(_node_normal[k]);
+    _v1[k] /= _v1[k].norm();
   }
-  // compute B matrix rows correspond to [ux1, ux2, ux3, ux4, uy1, uy2, uy3, uy4, uz1, uz2, uz3,
-  // uz4, a1, a2, a3, a4, b1, b2, b3, b4]
+
   for (unsigned int i = 0; i < _2d_points.size(); ++i)
-  {
     for (unsigned int j = 0; j < _t_points.size(); ++j)
     {
       (*_B[j])[i].resize(5, 30);
       (*_B[j])[i].zero();
+
       for (unsigned int k = 0; k < _nodes.size(); ++k)
       {
-        // corresponding to strain(0,0)
-        (*_B[j])[i](0, k) += _dphidxi_map[k][i] * (*_dxyz_dxi[j])[i](0);
+        (*_B[j])[i](0, k) = _dphidxi_map[k][i] * (*_dxyz_dxi[j])[i](0);
         (*_B[j])[i](0, 6 + k) = _dphidxi_map[k][i] * (*_dxyz_dxi[j])[i](1);
         (*_B[j])[i](0, 12 + k) = _dphidxi_map[k][i] * (*_dxyz_dxi[j])[i](2);
         (*_B[j])[i](0, 18 + k) = _dphidxi_map[k][i] * _t_points[j](0) / 2.0 * _thickness[i] *
@@ -593,7 +562,6 @@ ADComputeIncrementalTriangularShellStrain::computeBMatrix()
         (*_B[j])[i](0, 24 + k) = _dphidxi_map[k][i] * _t_points[j](0) / 2.0 * _thickness[i] *
                                  (_v1[k] * (*_dxyz_dxi[j])[i]);
 
-        // corresponding to strain(1,1)
         (*_B[j])[i](1, k) = _dphideta_map[k][i] * (*_dxyz_deta[j])[i](0);
         (*_B[j])[i](1, 6 + k) = _dphideta_map[k][i] * (*_dxyz_deta[j])[i](1);
         (*_B[j])[i](1, 12 + k) = _dphideta_map[k][i] * (*_dxyz_deta[j])[i](2);
@@ -602,9 +570,6 @@ ADComputeIncrementalTriangularShellStrain::computeBMatrix()
         (*_B[j])[i](1, 24 + k) = _dphideta_map[k][i] * _t_points[j](0) / 2.0 * _thickness[i] *
                                  (_v1[k] * (*_dxyz_deta[j])[i]);
 
-        // corresponding to strain(2,2) = 0
-
-        // corresponding to strain(0,1)
         (*_B[j])[i](2, k) = 0.5 * (_dphideta_map[k][i] * (*_dxyz_dxi[j])[i](0) +
                                    _dphidxi_map[k][i] * (*_dxyz_deta[j])[i](0));
         (*_B[j])[i](2, 6 + k) = 0.5 * (_dphideta_map[k][i] * (*_dxyz_dxi[j])[i](1) +
@@ -618,10 +583,9 @@ ADComputeIncrementalTriangularShellStrain::computeBMatrix()
             0.25 * _t_points[j](0) * _thickness[i] * _v1[k] *
             ((*_dxyz_deta[j])[i] * _dphidxi_map[k][i] + (*_dxyz_dxi[j])[i] * _dphideta_map[k][i]);
 
-        // corresponding to strain(0,2)
-        (*_B[j])[i](3, k) = 0.5 * (_dphidxi_map[k][i] * (*_dxyz_dzeta[j])[i](0));
-        (*_B[j])[i](3, 6 + k) = 0.5 * (_dphidxi_map[k][i] * (*_dxyz_dzeta[j])[i](1));
-        (*_B[j])[i](3, 12 + k) = 0.5 * (_dphidxi_map[k][i] * (*_dxyz_dzeta[j])[i](2));
+        (*_B[j])[i](3, k) = 0.5 * _dphidxi_map[k][i] * (*_dxyz_dzeta[j])[i](0);
+        (*_B[j])[i](3, 6 + k) = 0.5 * _dphidxi_map[k][i] * (*_dxyz_dzeta[j])[i](1);
+        (*_B[j])[i](3, 12 + k) = 0.5 * _dphidxi_map[k][i] * (*_dxyz_dzeta[j])[i](2);
         (*_B[j])[i](3, 18 + k) = 0.25 * _thickness[i] * -_v2[k] *
                                  (_phi_map[k][i] * (*_dxyz_dxi[j])[i] +
                                   _t_points[j](0) * _dphidxi_map[k][i] * (*_dxyz_dzeta[j])[i]);
@@ -629,28 +593,27 @@ ADComputeIncrementalTriangularShellStrain::computeBMatrix()
                                  (_phi_map[k][i] * (*_dxyz_dxi[j])[i] +
                                   _t_points[j](0) * _dphidxi_map[k][i] * (*_dxyz_dzeta[j])[i]);
 
-        // corresponding to strain(1,2)
-        (*_B[j])[i](4, k) = 0.5 * (_dphideta_map[k][i] * (*_dxyz_dzeta[j])[i](0));
-        (*_B[j])[i](4, 6 + k) = 0.5 * (_dphideta_map[k][i] * (*_dxyz_dzeta[j])[i](1));
-        (*_B[j])[i](4, 12 + k) = 0.5 * (_dphideta_map[k][i] * (*_dxyz_dzeta[j])[i](2));
+        (*_B[j])[i](4, k) = 0.5 * _dphideta_map[k][i] * (*_dxyz_dzeta[j])[i](0);
+        (*_B[j])[i](4, 6 + k) = 0.5 * _dphideta_map[k][i] * (*_dxyz_dzeta[j])[i](1);
+        (*_B[j])[i](4, 12 + k) = 0.5 * _dphideta_map[k][i] * (*_dxyz_dzeta[j])[i](2);
         (*_B[j])[i](4, 18 + k) = 0.25 * _thickness[i] * -_v2[k] *
                                  (_phi_map[k][i] * (*_dxyz_deta[j])[i] +
                                   _t_points[j](0) * _dphideta_map[k][i] * (*_dxyz_dzeta[j])[i]);
         (*_B[j])[i](4, 24 + k) = 0.25 * _thickness[i] * _v1[k] *
                                  (_phi_map[k][i] * (*_dxyz_deta[j])[i] +
                                   _t_points[j](0) * _dphideta_map[k][i] * (*_dxyz_dzeta[j])[i]);
-
-        updateGVectors(); // for large strain problems
       }
+
+      updateGVectors();
     }
-  }
 }
 
 void
-ADComputeIncrementalTriangularShellStrain::computeSolnVector()
+ADComputeIncrementalTri6ShellStrain::computeSolnVector()
 {
   _soln_vector.zero();
-  for (unsigned int j = 0; j < 6; ++j)
+
+  for (unsigned int j = 0; j < _nodes.size(); ++j)
   {
     _soln_disp_index[j].resize(_ndisp);
     _soln_rot_index[j].resize(_nrot);
@@ -660,9 +623,10 @@ ADComputeIncrementalTriangularShellStrain::computeSolnVector()
       _soln_disp_index[j][i] = _nodes[j]->dof_number(_nonlinear_sys.number(), _disp_num[i], 0);
       _soln_vector(j + i * _nodes.size()) =
           (*_sol)(_soln_disp_index[j][i]) - _sol_old(_soln_disp_index[j][i]);
+
       if (ADReal::do_derivatives)
         Moose::derivInsert(
-            _soln_vector(j + i * _nodes.size()).derivatives(), _soln_disp_index[j][i], 1.);
+            _soln_vector(j + i * _nodes.size()).derivatives(), _soln_disp_index[j][i], 1.0);
     }
 
     for (unsigned int i = 0; i < _nrot; ++i)
@@ -670,9 +634,10 @@ ADComputeIncrementalTriangularShellStrain::computeSolnVector()
       _soln_rot_index[j][i] = _nodes[j]->dof_number(_nonlinear_sys.number(), _rot_num[i], 0);
       _soln_vector(j + 18 + i * _nodes.size()) =
           (*_sol)(_soln_rot_index[j][i]) - _sol_old(_soln_rot_index[j][i]);
+
       if (ADReal::do_derivatives)
         Moose::derivInsert(
-            _soln_vector(j + 18 + i * _nodes.size()).derivatives(), _soln_rot_index[j][i], 1.);
+            _soln_vector(j + 18 + i * _nodes.size()).derivatives(), _soln_rot_index[j][i], 1.0);
     }
   }
 }
